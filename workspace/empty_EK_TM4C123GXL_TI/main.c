@@ -214,9 +214,9 @@ Void taskFxn(UArg arg0, UArg arg1)
 //#define PIXELDRAW_TEST
 //#define LINEDRAWH_TEST
 //#define LINEDRAWV_TEST
-//#define DRAW_RECTANGLE_TEST
+#define DRAW_RECTANGLE_TEST
 //#define TEXT_TEST
-#define UART_SCREEN_TEST
+//#define UART_SCREEN_TEST
     uint16_t color = HX8357_BLACK;
 #ifdef BLACKOUT_SCREEN
 
@@ -240,10 +240,12 @@ Void taskFxn(UArg arg0, UArg arg1)
 #endif
 
 #ifdef LINEDRAWH_TEST
+        color = HX8357_YELLOW;
         LineDrawH(display.pvDisplayData, 100, 380, 100, color);
 #endif
 
 #ifdef LINEDRAWV_TEST
+        color = HX8357_YELLOW;
         LineDrawV(display.pvDisplayData, 100, 100, 220, color);
 #endif
 
