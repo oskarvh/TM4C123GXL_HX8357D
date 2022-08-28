@@ -25,7 +25,7 @@
 #define HX8357_RDMADCTL 0x0B  ///< Read MADCTL
 #define HX8357_RDCOLMOD 0x0C  ///< Column entry mode
 #define HX8357_RDDIM 0x0D     ///< Read display image mode
-#define HX8357_RDDSDR 0x0F    ///< Read dosplay signal mode
+#define HX8357_RDDSDR 0x0F    ///< Read display signal mode
 
 #define HX8357_SLPIN 0x10  ///< Enter sleep mode
 #define HX8357_SLPOUT 0x11 ///< Exit sleep mode
@@ -103,8 +103,8 @@
 */
 void HX8357_init(SPI_Handle masterSpi); //
 void setAddressWindow(SPI_Handle spiHandle, uint16_t x, uint16_t y, uint16_t width, uint32_t height);
-void sendLcdCommandNoCS(SPI_Handle spiHandle, char command, char* pData, uint16_t numData, uint32_t delayUs);
-void sendLcdCommand(SPI_Handle spiHandle, char command, char* pData, uint16_t numData, uint32_t delayUs);
+void sendLcdCommandNoCS(SPI_Handle spiHandle, char command, char* pData, uint32_t numData, uint32_t delayUs);
+void sendLcdCommand(SPI_Handle spiHandle, char command, char* pData, uint32_t numData, uint32_t delayUs);
 
 // GRLIB specific functions:
 void PixelDraw(void *pvDisplayData, int32_t i32X, int32_t i32Y,

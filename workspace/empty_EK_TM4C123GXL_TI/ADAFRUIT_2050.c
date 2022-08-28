@@ -14,14 +14,14 @@
 #include "board.h"
 #include <ti/drivers/GPIO.h>
 
-void sendLcdCommand(SPI_Handle spiHandle, char command, char* pData, uint16_t numData, uint32_t delayUs){
+void sendLcdCommand(SPI_Handle spiHandle, char command, char* pData, uint32_t numData, uint32_t delayUs){
     SPI_Transaction transaction;
     transaction.count = 1; // 1 byte at a time for
     volatile char cmdBuf = command;
     transaction.rxBuf = (void *) NULL;
     transaction.txBuf = (void *) &cmdBuf;
     // If the command isn't 0xFF, send a command
-    if(command != 0xFF){
+    if(command != HX8357_NO_COMMAND){
         // Drive the D/C low for command.
         GPIO_write(GPIO_DC_PIN, 0);
         // Drive manual CS low:
@@ -33,9 +33,37 @@ void sendLcdCommand(SPI_Handle spiHandle, char command, char* pData, uint16_t nu
     }
     // Send data if any
     if(pData != NULL){
-        transaction.txBuf = (void *) pData;
-        transaction.count = numData;
-        SPI_transfer(spiHandle, &transaction);
+        // The data is maximum 1024 frames, hence if numData is larger that 1024, then we need to
+        // break up the transfer. This is due to the DMA.
+        if(numData < 1024){
+            transaction.txBuf = (void *) pData;
+            transaction.count = numData;
+            if(!SPI_transfer(spiHandle, &transaction)){
+                // TODO: catch error and handle it instead of looping forever.
+                while(1);
+            }
+        }
+        else {
+            uint32_t dataLeft = numData;
+            uint32_t dataWritten = 0;
+            transaction.txBuf = (void *) pData;
+            transaction.count = 1024;
+            while(dataLeft > 0){
+                if(!SPI_transfer(spiHandle, &transaction)){
+                    // TODO: catch error and handle it instead of looping forever.
+                    while(1);
+                }
+                dataWritten += transaction.count;
+                dataLeft -= transaction.count;
+                transaction.txBuf = (void *) &pData[dataWritten];
+                if(dataLeft > 1024){
+                    transaction.count = 1024;
+                }
+                else {
+                    transaction.count = dataLeft;
+                }
+            }
+        }
     }
     // Drive manual CS high:
     GPIO_write(GPIO_CS_PIN, 1);
@@ -46,13 +74,13 @@ void sendLcdCommand(SPI_Handle spiHandle, char command, char* pData, uint16_t nu
 }
 
 // Same function as above but without touching the CS
-void sendLcdCommandNoCS(SPI_Handle spiHandle, char command, char* pData, uint16_t numData, uint32_t delayUs){
+void sendLcdCommandNoCS(SPI_Handle spiHandle, char command, char* pData, uint32_t numData, uint32_t delayUs){
     SPI_Transaction transaction;
     transaction.count = 1; // 1 byte at a time for
     transaction.rxBuf = (void *) NULL;
     transaction.txBuf = (void *) &command;
     // If the command isn't 0xFF, send a command
-    if(command != 0xFF){
+    if(command != HX8357_NO_COMMAND){
         // Drive the D/C low for command.
         GPIO_write(GPIO_DC_PIN, 0);
         // Send command
@@ -62,9 +90,37 @@ void sendLcdCommandNoCS(SPI_Handle spiHandle, char command, char* pData, uint16_
     }
     // Send data if any
     if(pData != NULL){
-        transaction.txBuf = (void *) pData;
-        transaction.count = numData;
-        SPI_transfer(spiHandle, &transaction);
+        // The data is maximum 1024 frames, hence if numData is larger that 1024, then we need to
+        // break up the transfer. This is due to the DMA.
+        if(numData < 1024){
+            transaction.txBuf = (void *) pData;
+            transaction.count = numData;
+            if(!SPI_transfer(spiHandle, &transaction)){
+                // TODO: catch error and handle it instead of looping forever.
+                while(1);
+            }
+        }
+        else {
+            uint32_t dataLeft = numData;
+            uint32_t dataWritten = 0;
+            transaction.txBuf = (void *) pData;
+            transaction.count = 1024;
+            while(dataLeft > 0){
+                if(!SPI_transfer(spiHandle, &transaction)){
+                    // TODO: catch error and handle it instead of looping forever.
+                    while(1);
+                }
+                dataWritten += transaction.count;
+                dataLeft -= transaction.count;
+                transaction.txBuf = (void *) &pData[dataWritten];
+                if(dataLeft > 1024){
+                    transaction.count = 1024;
+                }
+                else {
+                    transaction.count = dataLeft;
+                }
+            }
+        }
     }
     // Delay if needed.
     if(delayUs > 0){
@@ -363,6 +419,10 @@ int32_t i32Y2, uint32_t ui32ulValue){
 // words, both sXMin and sXMax are drawn, along with sYMin and sYMax).
 // Returns:
 // None.
+
+// DEBUG VARIABLES:
+uint32_t numPixels = 0;
+uint32_t numWritten = 0;
 void RectFill(void *pvDisplayData, const tRectangle *psRect,
 uint32_t ui32ulValue){
     // Get the SPI handle
@@ -375,7 +435,7 @@ uint32_t ui32ulValue){
 
     // Try to allocate all rows, which is num(x_pixels)*num(y_pixels)
     int n = (psRect->i16YMax) - (psRect->i16YMin);
-    int numPixelsInARow = (psRect->i16XMax) - (psRect->i16XMin);
+    int numPixelsInARow = (psRect->i16XMax) - (psRect->i16XMin)+1;
 
     // One pixel is 16 bits, so allocate the number of pixels in one row * number of rows * 2
     pScreenBuf = (char*)malloc(numPixelsInARow*n*2);
@@ -403,8 +463,11 @@ uint32_t ui32ulValue){
     }
 
     // Set the address window to match the rectangle.
-    setAddressWindow(spiHandle, psRect->i16YMin, psRect->i16XMin, psRect->i16YMax-psRect->i16YMin, psRect->i16XMax-psRect->i16XMin);
-
+    setAddressWindow(spiHandle, psRect->i16YMin,
+                     psRect->i16XMin,
+                     psRect->i16YMax-psRect->i16YMin
+                     , psRect->i16XMax-psRect->i16XMin);
+    numPixels = (psRect->i16YMax-psRect->i16YMin)*(psRect->i16XMax-psRect->i16XMin);
     // Send the color to that address range. All colors are 2 bytes.
     int x,y;
 
@@ -418,14 +481,33 @@ uint32_t ui32ulValue){
     if(n > 0){
         // Loop through the rows and write the entire buffer at once,
         // looping through the buffer several times if needed.
-        for(y = psRect->i16YMin ; y <= psRect->i16YMax ; y += n){
+        y = psRect->i16YMin;
+        while(y < psRect->i16YMax){
+            sendLcdCommandNoCS(spiHandle, HX8357_NO_COMMAND, pScreenBuf, 2*n*numPixelsInARow, 0);
+            y += n;
+            numWritten += n*numPixelsInARow;
+        }
+        // If the exact number of rows haven't been written, then that means that
+        // y%n != 0, which means that we need to write a shorter burst.
+        if(y != psRect->i16YMax){
+            y -= n;
+            // Write the remainder of the pixels
+            sendLcdCommandNoCS(spiHandle, HX8357_NO_COMMAND, pScreenBuf, 2*numPixelsInARow*(psRect->i16YMax-y), 0);
+        }
+        //y -= n;
+        /*
+        for(y = psRect->i16YMin ; y <= psRect->i16YMax-n ; y += n){
             sendLcdCommandNoCS(spiHandle, HX8357_NO_COMMAND, pScreenBuf, 2*n*numPixelsInARow, 0);
         }
+        */
         // Check if there are rows left not sent due to y_size % n != 0:
+        /*
         if(y < psRect->i16YMax){
             // Write the remainder of the pixels
             sendLcdCommandNoCS(spiHandle, HX8357_NO_COMMAND, pScreenBuf, 2*(n*numPixelsInARow-(psRect->i16YMax-y)), 0);
+            numWritten += (n*numPixelsInARow-(psRect->i16YMax-y));
         }
+        */
     }
     else{
         // Send the command for every pixel
